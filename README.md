@@ -20,7 +20,7 @@ A bash script for scraping xmb forums in json.
 
 ## Json format
 
-Here's example of [topic](topic-example.json).
+Here's example of [thread](thread-example.json).
 
 ## Supported forums examples
     
@@ -34,13 +34,13 @@ Here's example of [topic](topic-example.json).
 
     xmbforum-scraper [URL]...
 
-Script downloads topic to files named by their id's.
+Script downloads thread to files named by their id's.
 
 Download forum into current directory using 4 processes
 
     xmbforum-scraper -p 4 'https://www.sciencemadness.org/whisper/forumdisplay.php?fid=9'
 
-Download thread by irregular topic url into DIR 
+Download thread by irregular thread url into DIR 
 
     xmbforum-scraper -d DIR -t 'https://forum.com/abcdef/loop/'
 

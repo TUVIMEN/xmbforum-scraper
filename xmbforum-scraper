@@ -125,7 +125,7 @@ usage() {
     printf 'Options:\n  -d,\t--dir DIR\t\tchange directory to DIR\n'
     printf '  -p,\t--max-procs NUM\t\tset number of processes to run at a time\n'
     printf '  -b,\t--cookie DATA|FILENAME\tpass cookie to curl\n'
-    printf '  -t,\t--topic URL\t\tpass URL as thread link\n'
+    printf '  -t,\t--thread URL\t\tpass URL as thread link\n'
     printf '  -f,\t--forum URL\t\tpass URL as forum link\n'
     printf '  -c,\t--category URL\t\tpass URL as category link, can be used to download the whole forum\n'
     printf '  -h,\t--help\t\t\tshow this message\n'
@@ -137,7 +137,7 @@ while [ "$#" -gt 0 ]
 do
     case "$1" in
         -d|--dir) cd "$2" || break; shift;;
-        -t|--topic)
+        -t|--thread)
             url="$(baseurl "$2")"
             get_thread "$2"
             shift;;
