@@ -1,0 +1,175 @@
+#!/bin/bash
+# by Dominik Stanisław Suchora <suchora.dominik7@gmail.com>
+# License: GNU GPLv3
+
+shopt -s extglob
+
+declare maxprocs='1' url _cookies old nousers='0' noreactions='0'
+
+IFS=$'\n'
+
+ucurl() {
+    curl -k -L -g -m 120 -s -b "$_cookies" --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.2 Chrome/87.0.4280.144 Safari/537.36' -H 'Accept-Encoding: gzip, deflate' --compressed "$@"
+}
+
+get_thread() {
+    [[ "$1" =~ ^http[s]?://([[:alnum:]-]+\.)+[[:alpha:]]+/(.*/)?viewthread\.php\?tid=([[:digit:]]+)$ ]] || { echo "improper url - $1"; return; }
+    local -r id="${BASH_REMATCH[3]}"
+    [ -e "$id" ] && return
+    echo "$1"
+    local t="$(ucurl -D- "$1" | tr -d '\t\n\r\a')"
+    local t2 cookies
+    #cookies="$(sed -n '/^</q; /^[sS]et-[cC]ookie: /{s/Set-Cookie: //i;s/\r//g;p}' <<< "$t" | paste -sd ';')"
+    local next
+
+    {
+    echo "$1" #link
+    echo "$id" #id
+    echo "$(hgrep 'td .nav -style | "%i\n"' <<< ""$t | sed 's/.* &raquo; //' | recode HTML..UTF8)" #title
+    echo "$(hgrep 'td .nav -style; a | "%i/"' <<< "$t" | recode HTML..UTF8)" #path
+
+    while :
+    do
+        for i in $(tr -d '\n' <<< "$t" | hgrep 'tr -class bgcolor' | sed 'N;N;s/\n/\t/g')
+        do
+            {
+            echo "$(cut -f2 <<< "$i" | hgrep 'td .tablerow | "%i\n"')" #body
+            echo "$(cut -f3 <<< "$i" | hgrep 'a href title=".* homepage.*" | "%(href)a\n"')" #homepage
+            echo "$(cut -f1 <<< "$i" | hgrep 'td -rowspan @l[1]; a @m".\+ .\+ .\+" | "%i\n"' | sed 's/^[^ ]\+ [^ ]\+ //')" #date
+            echo "$(cut -f1 <<< "$i" | hgrep 'td rowspan @l[1]; font .mediumtxt; .* @M"<" | "%i\n"')" #user
+            echo "$(cut -f1 <<< "$i" | hgrep 'td rowspan @l[1]; div .smalltxt; a name @l[1] | "%(name)a\n"' | sed 's/^pid//')" #postid
+            echo "$(cut -f1 <<< "$i" | hgrep 'td rowspan @l[1]; div .smalltxt | "%i\n"' | recode HTML..UTF8 | sed '
+                s/^<a [^>]*><\/a>//
+                s/<br \/>/\n/
+                s/<img src="images[^>]*\/>/*/g
+                s/<br \/>.*<hr \/>/\n/
+                s/<div [^>]*>\(<img [^>]*src="\([^"]*\)"[^>]*\/>\)\?<\/div><br \/>/\2\n/
+                s/<br \/>[^:]*: //
+                s/<br \/>[^:]*: /\n/
+                /<br \/>[^:]*: /!s/<br \/>/\n\0/
+                s/<br \/>[^:]*: \(<div [^>]*><img [^>]* alt="\([^"]*\)"[^>]*\/><\/div><br \/>\([^<]*\)\)\?/\n\3/
+                s/<br \/>[^<]*<br \/>/\n/;
+                s/<br \/>//;
+                s/<strong>.*<\/strong> //;
+            ' | recode HTML..UTF8)" #rank stars avatar posts registered location mood
+            } | paste -sd '\t'
+        done
+        next="$url/$(hgrep 'td .multi; a href rel=next | "%(href)a\n"' <<< "$t" | head -n1 | sed 's/&amp;/\&/g')"
+        grep -q '&page=' <<< "$next" || break
+        echo "$next" >&2
+        t="$(ucurl "$next" | tr -d '\t\r\a')";
+    done
+    } | jq -RnMcs '
+        (inputs | split("\n")) as $lines |
+        .["link"]=$lines[0] |
+        .["id"]=$lines[1] |
+        .["title"]=$lines[2] |
+        .["path"]=$lines[3] |
+        .["posts"]=($lines[4:-1] | map(split("\t") | {
+            ("body"):.[0],
+            ("homepage"):.[1],
+            ("date"):.[2],
+            ("user"):.[3],
+            ("postid"):.[4],
+            ("rank"):.[5],
+            ("stars"):(.[6] | length),
+            ("avatar"):.[7],
+            ("posts"):.[8],
+            ("registered"):.[9],
+            ("location"):.[10],
+            ("mood"):.[11],
+        }))' > "$id"
+}
+
+get_forum() {
+    local t next
+    t="$(ucurl "$1" | tr -d '\n\t\r')"
+    while :
+    do
+        for i in $(hgrep 'font .mediumtxt; a href="forumdisplay\.php.*" @l[1] | "'"$url"/'%(href)a\n"' <<< "$t")
+        do
+            get_forum "$i"
+        done
+        for i in $(hgrep 'font .mediumtxt; a href="viewthread\.php.*" @l[1] | "'"$url"/'%(href)a\n"' <<< "$t")
+        do
+            [ "$(jobs | wc -l)" -gt "$maxprocs" ] && wait %%
+            get_thread "$i" &
+        done
+        next="$url/$(hgrep 'td .multi; a href rel=next | "%(href)a\n"' <<< "$t" | head -n1 | sed 's/&amp;/\&/g')"
+        grep -q '&page=' <<< "$next" || break
+        echo "$next" >&2
+        t="$(ucurl "$next" | tr -d '\t\r\a')";
+    done
+    wait
+}
+
+get_category() {
+    local t
+    t="$(ucurl "$1" | tr -d '\n\t\r')"
+    for i in $(hgrep 'a href=".*forumdisplay.php?.*" | "%(href)a\n"' <<< "$t" | sed 's#^\./#'"$url"/'#')
+    do
+        get_forum "$i"
+    done
+}
+
+
+baseurl() {
+    local base="$(dirname "$1")"
+    grep -Eq '^http(s)?://([a-zA-Z0-9-]+\.)+[a-zA-Z]+/?$' <<< "$1" && base="$(sed 's#/$##' <<< "$1")"
+    echo "$base"
+}
+
+usage() {
+    printf '%s [OPTION]... [URL]...\n' "${0##*/}"
+    printf 'Scrape xmb forums from URL to json.\n\n'
+    printf 'Options:\n  -d,\t--dir DIR\t\tchange directory to DIR\n'
+    printf '  -p,\t--max-procs NUM\t\tset number of processes to run at a time\n'
+    printf '  -b,\t--cookie DATA|FILENAME\tpass cookie to curl\n'
+    printf '  -t,\t--topic URL\t\tpass URL as thread link\n'
+    printf '  -f,\t--forum URL\t\tpass URL as forum link\n'
+    printf '  -c,\t--category URL\t\tpass URL as category link, can be used to download the whole forum\n'
+    printf '  -h,\t--help\t\t\tshow this message\n'
+}
+
+[ "$#" -eq 0 ] && { usage >&2; exit 1; }
+
+while [ "$#" -gt 0 ]
+do
+    case "$1" in
+        -d|--dir) cd "$2" || break; shift;;
+        -t|--topic)
+            url="$(baseurl "$2")"
+            get_thread "$2"
+            shift;;
+        -f|--forum)
+            url="$(baseurl "$2")"
+            get_forum "$2"
+            shift;;
+        -c|--category)
+            url="$(baseurl "$2")"
+            ucurl "$2" | get_category "$2"
+            shift;;
+        -b|--cookie) _cookies="$2"; shift;;
+        -p|--max-procs) maxprocs="$2"; shift;;
+        -h|--help) usage >&2; exit;;
+        -*) usage >&2; exit 1;;
+        *) break;;
+    esac
+    shift
+done
+
+while [ "$#" -gt 0 ]
+do
+    url="$(baseurl "$1")"
+    case "$1" in
+        http?(s)://+(+([[:alnum:]-]).)+([[:alpha:]])/?(*/)viewthread.php\?tid=+([[:digit:]]))
+            get_thread "$1";;
+        http?(s)://+(+([[:alnum:]-]).)+([[:alpha:]])/?(*/)forumdisplay.php\?fid=+([[:digit:]]))
+            get_forum "$1";;
+        http?(s)://+(+([[:alnum:]-]).)+([[:alpha:]])/?(*/)index.php\?gid=+([[:digit:]]))
+            get_category "$1";;
+        http?(s)://+(+([[:alnum:]-]).)+([[:alpha:]])*)
+            get_category "$1";
+    esac
+    shift
+done
