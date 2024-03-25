@@ -4,7 +4,7 @@
 
 shopt -s extglob
 
-declare maxprocs='1' url _cookies old nousers='0' noreactions='0'
+declare maxprocs='1' url _cookies
 
 IFS=$'\n'
 
