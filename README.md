@@ -13,10 +13,10 @@ A bash script for scraping xmb forums in json.
 
 ## Supported links formats
 
-    http?(s)://forum.com/(.*/)?viewthread.php?tid=([[:digit:]]+)
-    http?(s)://forum.com/(.*/)?forumdisplay.php?fid=([[:digit:]]+)
-    http?(s)://forum.com/(.*/)?index.php?gid=([[:digit:]]+)
-    http?(s)://forum.com/.*
+    http(s)?://forum.com/(.*/)?viewthread.php\?tid=([[:digit:]]+)
+    http(s)?://forum.com/(.*/)?forumdisplay.php\?fid=([[:digit:]]+)
+    http(s)?://forum.com/(.*/)?index.php\?gid=([[:digit:]]+)
+    http(s)?://forum.com/.*
 
 ## Json format
 
