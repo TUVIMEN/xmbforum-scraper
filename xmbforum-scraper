@@ -16,7 +16,7 @@ get_thread() {
     [[ "$1" =~ ^http[s]?://([[:alnum:]-]+\.)+[[:alpha:]]+/(.*/)?viewthread\.php\?tid=([[:digit:]]+)$ ]] || { echo "improper url - $1"; return; }
     local -r id="${BASH_REMATCH[3]}"
     [ -e "$id" ] && return
-    echo "$1"
+    echo "$1" >&2
     local t="$(ucurl -D- "$1" | tr -d '\t\n\r\a')"
     local t2 cookies
     #cookies="$(sed -n '/^</q; /^[sS]et-[cC]ookie: /{s/Set-Cookie: //i;s/\r//g;p}' <<< "$t" | paste -sd ';')"
@@ -25,36 +25,40 @@ get_thread() {
     {
     echo "$1" #link
     echo "$id" #id
-    echo "$(hgrep 'td .nav -style | "%i\n"' <<< ""$t | sed 's/.* &raquo; //' | recode HTML..UTF8)" #title
-    echo "$(hgrep 'td .nav -style; a | "%i/"' <<< "$t" | recode HTML..UTF8)" #path
+    reliq '
+        . td .nav -style | "%i\n" / sed "s/.* &raquo; //",
+        . td .nav -style; a | "%i/" / echo "" "\n"
+    ' <<< "$t"
 
     while :
     do
-        for i in $(tr -d '\n' <<< "$t" | hgrep 'tr -class bgcolor' | sed 'N;N;s/\n/\t/g')
+        for i in $(tr -d '\n' <<< "$t" | reliq 'tr -class bgcolor / sed "N;N;s/\n/\t/g"')
         do
             {
-            echo "$(cut -f2 <<< "$i" | hgrep 'td .tablerow | "%i\n"')" #body
-            echo "$(cut -f3 <<< "$i" | hgrep 'a href title=".* homepage.*" | "%(href)a\n"')" #homepage
-            echo "$(cut -f1 <<< "$i" | hgrep 'td -rowspan @l[1]; a @m".\+ .\+ .\+" | "%i\n"' | sed 's/^[^ ]\+ [^ ]\+ //')" #date
-            echo "$(cut -f1 <<< "$i" | hgrep 'td rowspan @l[1]; font .mediumtxt; .* @M"<" | "%i\n"')" #user
-            echo "$(cut -f1 <<< "$i" | hgrep 'td rowspan @l[1]; div .smalltxt; a name @l[1] | "%(name)a\n"' | sed 's/^pid//')" #postid
-            echo "$(cut -f1 <<< "$i" | hgrep 'td rowspan @l[1]; div .smalltxt | "%i\n"' | recode HTML..UTF8 | sed '
-                s/^<a [^>]*><\/a>//
-                s/<br \/>/\n/
-                s/<img src="images[^>]*\/>/*/g
-                s/<br \/>.*<hr \/>/\n/
-                s/<div [^>]*>\(<img [^>]*src="\([^"]*\)"[^>]*\/>\)\?<\/div><br \/>/\2\n/
-                s/<br \/>[^:]*: //
-                s/<br \/>[^:]*: /\n/
-                /<br \/>[^:]*: /!s/<br \/>/\n\0/
-                s/<br \/>[^:]*: \(<div [^>]*><img [^>]* alt="\([^"]*\)"[^>]*\/><\/div><br \/>\([^<]*\)\)\?/\n\3/
-                s/<br \/>[^<]*<br \/>/\n/;
-                s/<br \/>//;
-                s/<strong>.*<\/strong> //;
-            ' | recode HTML..UTF8)" #rank stars avatar posts registered location mood
+            echo "$(cut -f2 <<< "$i" | reliq 'td .tablerow | "%i\n"')" #body
+            echo "$(cut -f3 <<< "$i" | reliq 'a href title=w>homepage | "%(href)v\n"')" #homepage
+            cut -f1 <<< "$i" | reliq '
+                . td -rowspan l@[1]; a m@E>".+ .+ .+" | "%i\n" / sed "s/^[^ ]\+ [^ ]\+ //",
+                . td rowspan l@[1]; font .mediumtxt; * c@[0] | "%i\n",
+                . td rowspan l@[1]; div .smalltxt; a name l@[1] | "%(name)v\n" / sed "s/^pid//",
+                . td rowspan l@[1]; div .smalltxt | "%i\n" / sed "
+                    s/^<a [^>]*><\/a>//
+                    s/<br \/>/\n/
+                    s/<img src=\"images[^>]*\/>/*/g
+                    s/<br \/>.*<hr \/>/\n/
+                    s/<div [^>]*>\(<img [^>]*src=\"\([^\"]*\)\"[^>]*\/>\)\?<\/div><br \/>/\2\n/
+                    s/<br \/>[^:]*: //
+                    s/<br \/>[^:]*: /\n/
+                    /<br \/>[^:]*: /!s/<br \/>/\n\0/
+                    s/<br \/>[^:]*: \(<div [^>]*><img [^>]* alt=\"\([^\"]*\)\"[^>]*\/><\/div><br \/>\([^<]*\)\)\?/\n\3/
+                    s/<br \/>[^<]*<br \/>/\n/;
+                    s/<br \/>//;
+                    s/<strong>.*<\/strong> //;
+                    "
+            '
             } | paste -sd '\t'
         done
-        next="$url/$(hgrep 'td .multi; a href rel=next | "%(href)a\n"' <<< "$t" | head -n1 | sed 's/&amp;/\&/g')"
+        next="$url/$(reliq 'td .multi; a href rel=next | "%(href)v\n" / sed "s/&amp;/\&/g;q"' <<< "$t")"
         grep -q '&page=' <<< "$next" || break
         echo "$next" >&2
         t="$(ucurl "$next" | tr -d '\t\r\a')";
@@ -83,19 +87,20 @@ get_thread() {
 
 get_forum() {
     local t next
+    echo "$1" >&2
     t="$(ucurl "$1" | tr -d '\n\t\r')"
     while :
     do
-        for i in $(hgrep 'font .mediumtxt; a href="forumdisplay\.php.*" @l[1] | "'"$url"/'%(href)a\n"' <<< "$t")
+        for i in $(reliq 'font .mediumtxt; a href=b>"forumdisplay.php" l@[1] | "'"$url"/'%(href)v\n"' <<< "$t")
         do
             get_forum "$i"
         done
-        for i in $(hgrep 'font .mediumtxt; a href="viewthread\.php.*" @l[1] | "'"$url"/'%(href)a\n"' <<< "$t")
+        for i in $(reliq 'font .mediumtxt; a href=b>"viewthread.php" l@[1] | "'"$url"/'%(href)v\n"' <<< "$t")
         do
             [ "$(jobs | wc -l)" -gt "$maxprocs" ] && wait %%
             get_thread "$i" &
         done
-        next="$url/$(hgrep 'td .multi; a href rel=next | "%(href)a\n"' <<< "$t" | head -n1 | sed 's/&amp;/\&/g')"
+        next="$url/$(reliq 'td .multi; a href rel=next | "%(href)v\n" / sed "s/&amp;/\&/g;q"' <<< "$t")"
         grep -q '&page=' <<< "$next" || break
         echo "$next" >&2
         t="$(ucurl "$next" | tr -d '\t\r\a')";
@@ -106,7 +111,7 @@ get_forum() {
 get_category() {
     local t
     t="$(ucurl "$1" | tr -d '\n\t\r')"
-    for i in $(hgrep 'a href=".*forumdisplay.php?.*" | "%(href)a\n"' <<< "$t" | sed 's#^\./#'"$url"/'#')
+    for i in $(reliq 'a href=a>"forumdisplay.php?" | "'"$url"/'%(href)v\n" / sed "s#/./#/#"' <<< "$t")
     do
         get_forum "$i"
     done
@@ -114,9 +119,7 @@ get_category() {
 
 
 baseurl() {
-    local base="$(dirname "$1")"
-    grep -Eq '^http(s)?://([a-zA-Z0-9-]+\.)+[a-zA-Z]+/?$' <<< "$1" && base="$(sed 's#/$##' <<< "$1")"
-    echo "$base"
+    sed 's#/[^/]*$##' <<< "$1"
 }
 
 usage() {
