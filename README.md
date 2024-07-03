@@ -1,3 +1,7 @@
+# Archive
+
+Any further development has been transfered to [forumscraper](https://github.com/TUVIMEN/forumscraper).
+
 # xmbforum-scraper
 
 A bash script for scraping xmb forums in json.
@@ -8,7 +12,7 @@ A bash script for scraping xmb forums in json.
  - [jq](https://github.com/stedolan/jq)
 
 ## Installation
-    
+
     install -m 755 xmbforum-scraper /usr/bin
 
 ## Supported links formats
@@ -23,7 +27,7 @@ A bash script for scraping xmb forums in json.
 Here's example of [thread](thread-example.json).
 
 ## Supported forums examples
-    
+
     https://www.sciencemadness.org/whisper/
     https://forum.solbu.net
     https://forum.postcrossing.com
@@ -40,7 +44,7 @@ Download forum into current directory using 4 processes
 
     xmbforum-scraper -p 4 'https://www.sciencemadness.org/whisper/forumdisplay.php?fid=9'
 
-Download thread by irregular thread url into DIR 
+Download thread by irregular thread url into DIR
 
     xmbforum-scraper -d DIR -t 'https://forum.com/abcdef/loop/'
 
